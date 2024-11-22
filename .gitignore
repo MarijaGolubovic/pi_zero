@@ -1,2 +1,3 @@
 DATA
 __pycache__/
+*.pth
