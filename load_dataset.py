@@ -1,3 +1,4 @@
+from torch.utils.data import Dataset
 import torch
 import cv2
 import numpy as np
@@ -21,48 +22,71 @@ def text2tokens(text, vocab):
     padded_tensor = torch.zeros(max_length, dtype=torch.long)
     padded_tensor[:len(tokens_tensor)] = tokens_tensor
 
-    return padded_tensor
+    return padded_tensor.unsqueeze(0)
 
 
 def str2array(string):
-    array = []
-    for element in string.replace('[', '').replace(']', '').split(','):
-        array.append(float(element))
+    array = [float(element) for element in string.replace(
+        '[', '').replace(']', '').split(',')]
 
     return np.array(array)
 
 
-path = 'DATA'
-data_dir = os.listdir(path)
+def load_data(data_path='DATA'):
+    data_dir = os.listdir(data_path)
 
-actions_path = path + '/actions'
-observations_path = path + '/observations'
+    actions_path = os.path.join(data_path, 'actions')
+    observations_path = os.path.join(data_path, 'observations')
 
-data_dir.remove('observations')
-data_dir.remove('actions')
+    data_dir = [d for d in data_dir if d not in ['observations', 'actions']]
 
-
-def load_data():
+    all_data = []
     for data in data_dir:
-        images_path = os.path.join(path, data)
+        images_path = os.path.join(data_path, data)
         num_instances = len(os.listdir(images_path))
 
-        act = os.path.join(actions_path, data) + '.txt'
-        curr_pose = act = os.path.join(observations_path, data) + '.txt'
-        actions = open(act)
-        curresnt_poses = open(curr_pose)
+        action_file = os.path.join(actions_path, f'{data}.txt')
+        pose_file = os.path.join(observations_path, f'{data}.txt')
 
-        for idx in range(num_instances):
-            img_path = os.path.join(images_path, str(idx))
-            img_path += '.jpg'
+        with open(action_file, 'r') as actions, open(pose_file, 'r') as poses:
+            for idx in range(num_instances):
+                img_path = os.path.join(images_path, f'{idx}.jpg')
 
-            image = cv2.imread(img_path)
-            action = actions.readline()
-            current_pose = curresnt_poses.readline()
+                image = cv2.imread(img_path)
+                if image is None:
+                    print('[ERROR] Image is None!')
+                    continue
 
-            image = image2tensor(image)
-            action = arr2tensor(str2array(action))
-            current_pose = arr2tensor(str2array(current_pose))
-            print(image.shape, action.shape, current_pose.shape)
+                action = actions.readline().strip()
+                current_pose = poses.readline().strip()
 
-            return image, current_pose, action
+                image_tensor = image2tensor(image)
+                action_tensor = arr2tensor(str2array(action))
+                current_pose_tensor = arr2tensor(str2array(current_pose))
+
+                all_data.append(
+                    (image_tensor, current_pose_tensor, action_tensor))
+
+
+    return all_data
+
+
+class RobotDataset(Dataset):
+    def __init__(self, data_path='DATA', num_samples=None, batch_size=2):
+        self.data = load_data(data_path)
+        self.num_samples = len(
+            self.data) if num_samples is None else num_samples
+        self.batch_size = batch_size
+
+    def __len__(self):
+        return self.num_samples
+
+    def __getitem__(self, idx):
+        idx = idx % len(self.data)
+        image_tensor, current_pose_tensor, action_tensor = self.data[idx]
+
+        return image_tensor, current_pose_tensor, action_tensor
+
+
+if __name__ == '__main__':
+    load_data()
